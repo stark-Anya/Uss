@@ -48,11 +48,13 @@ STICKER = [
 EMOJIOS = ["❤️", "😁", "👀", "⚡️", "🕊", "❤️‍🔥", "💅", "👻"]
 
 START_IMGS = [
-    "https://files.catbox.moe/k43ugw.jpg",
-    "https://files.catbox.moe/9soc53.jpg",
-    "https://files.catbox.moe/k8vvww.jpg",
-    "https://files.catbox.moe/bag4i1.jpg",
-    "https://files.catbox.moe/by685a.jpg",
+    "https://files.catbox.moe/s2xucu.jpg",
+    "https://files.catbox.moe/sbmsp3.jpg",
+    "https://files.catbox.moe/14twm0.jpg",
+    "https://files.catbox.moe/rd7a2s.jpg",
+    "https://files.catbox.moe/f3p1p3.jpg",
+    "https://files.catbox.moe/0anskq.jpg",
+    "https://files.catbox.moe/qa6voo.jpg",
 ]
 
 # ────────────────────────────────────────────────────────────────
@@ -68,14 +70,6 @@ async def start_pm(client, message: Message, _):
         await message.react(random.choice(EMOJIOS))
     except:
         pass
-
-    # 2. Typing animation
-    await client.send_chat_action(message.chat.id, ChatAction.TYPING)
-
-    # 3. "Hieee Cutiee" intro message
-    starting_msg = await message.reply_text("**__𝐻𝑖𝑒𝑒𝑒 𝐶𝑢𝑡𝑖𝑒𝑒 __**")
-    await asyncio.sleep(0.6)
-    await starting_msg.delete()
 
     # 4. Random Sticker
     umm = await message.reply_sticker(sticker=random.choice(STICKER))
