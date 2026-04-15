@@ -1,3 +1,12 @@
+# ==========================================
+#        J.A.R.V.I.S PROTOCOL INITIALIZED
+# ==========================================
+#   Creator   : Mister Stark
+#   System    : Telegram AI Bot
+#   Level     : Advanced Automation
+#   Security  : Stark Shield Enabled 🛡️
+# ==========================================
+
 from aiogram import Bot, Dispatcher, types
 from aiogram.types import InlineKeyboardMarkup, InlineKeyboardButton
 from aiogram.utils import executor
