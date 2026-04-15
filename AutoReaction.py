@@ -1,3 +1,14 @@
+# ==========================================
+#        J.A.R.V.I.S PROTOCOL INITIALIZED
+# ==========================================
+#   Creator   : Mister Stark
+#   System    : Telegram AI Bot
+#   Level     : Advanced Automation
+#   Security  : Stark Shield Enabled 🛡️
+# ==========================================
+
+
+
 from telegram import (
     Update,
     ReactionTypeEmoji,
