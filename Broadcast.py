@@ -94,115 +94,107 @@ async def broadcast_message(client, message, _):
         s, p = await _send_to_chats(app, main_chats, y, x, reply_msg, query, message)
         total_sent += s
         total_pin += p
-        # ── Saare clone bots ke groups ──────────────────────────────
+
+# ── Saare clone bots ke groups ──────────────────────────────
         try:
             for bot_id, clone_client in clone_bot_clients.items():
+
                 try:
                     clone_chats = await get_clone_served_chats(str(bot_id))
                     clone_chat_ids = [int(c["chat_id"]) for c in clone_chats]
+
                     print(f"Clone Bot: {bot_id}")
                     print(f"Clone Chats: {clone_chat_ids}")
+
                     if not clone_chat_ids:
                         continue
+
                     for chat_id in clone_chat_ids:
+
                         try:
-                            chat = await clone_client.get_chat(chat_id)
-                            print(f"ACCESS OK => {chat.title}")
-                        except Exception as e:
-                            print(f"NO ACCESS => {chat_id} => {e}")
-                    for chat_id in clone_chat_ids:
-                      try:
-                        if reply_msg:
-                          if reply_msg.photo:
-                            await clone_client.send_photo(
-                              chat_id,
-                              reply_msg.photo.file_id,
-                              caption=reply_msg.caption or ""
-                            )
-                          elif reply_msg.video:
-                            await clone_client.send_video(
-                              chat_id,
-                              reply_msg.video.file_id,
-                              caption=reply_msg.caption or ""
-                            )
-                          elif reply_msg.document:
-                            await clone_client.send_document(
-                              chat_id,
-                              reply_msg.document.file_id,
-                              caption=reply_msg.caption or ""
-                            )
-                          elif reply_msg.audio:
-                            await clone_client.send_audio(
-                              chat_id,
-                              reply_msg.audio.file_id,
-                              caption=reply_msg.caption or ""
-                            )
-                          elif reply_msg.voice:
-                            await clone_client.send_voice(
-                              chat_id,
-                              reply_msg.voice.file_id,
-                              caption=reply_msg.caption or ""
-                            )
-                          elif reply_msg.animation:
-                            await clone_client.send_animation(
-                              chat_id,
-                              reply_msg.animation.file_id,
-                              caption=reply_msg.caption or ""
-                            )
-                          elif reply_msg.sticker:
-                            await clone_client.send_sticker(
-                              chat_id,
-                              reply_msg.sticker.file_id
-                            )
-                          elif reply_msg.text:
-                            await clone_client.send_message(
-                              chat_id,
-                              reply_msg.text
-                            )
-                          elif query:
-                            await clone_client.send_message(
-                              chat_id,
-                              query
-                            )
+
+                            if reply_msg:
+
+                                if reply_msg.photo:
+                                    await clone_client.send_photo(
+                                        chat_id,
+                                        reply_msg.photo.file_id,
+                                        caption=reply_msg.caption or ""
+                                    )
+
+                                elif reply_msg.video:
+                                    await clone_client.send_video(
+                                        chat_id,
+                                        reply_msg.video.file_id,
+                                        caption=reply_msg.caption or ""
+                                    )
+
+                                elif reply_msg.document:
+                                    await clone_client.send_document(
+                                        chat_id,
+                                        reply_msg.document.file_id,
+                                        caption=reply_msg.caption or ""
+                                    )
+
+                                elif reply_msg.audio:
+                                    await clone_client.send_audio(
+                                        chat_id,
+                                        reply_msg.audio.file_id,
+                                        caption=reply_msg.caption or ""
+                                    )
+
+                                elif reply_msg.voice:
+                                    await clone_client.send_voice(
+                                        chat_id,
+                                        reply_msg.voice.file_id
+                                    )
+
+                                elif reply_msg.animation:
+                                    await clone_client.send_animation(
+                                        chat_id,
+                                        reply_msg.animation.file_id,
+                                        caption=reply_msg.caption or ""
+                                    )
+
+                                elif reply_msg.sticker:
+                                    await clone_client.send_sticker(
+                                        chat_id,
+                                        reply_msg.sticker.file_id
+                                    )
+
+                                elif reply_msg.text:
+                                    await clone_client.send_message(
+                                        chat_id,
+                                        reply_msg.text
+                                    )
+
+                            elif query:
+                                await clone_client.send_message(
+                                    chat_id,
+                                    query
+                                )
+
                             total_sent += 1
-                      except Exception as e:
-                        print(f"[CLONE SEND ERROR] {chat_id} => {e}")              
-                      except Exception as e:
-                        print(f"[CLONE ERROR] {e}")
-                        continue
-                      except Exception as e:
-                        print(f"[OUTER ERROR] {e}")
-                        try:
-                          await status_msg.edit_text(_["broad_3"].format(total_sent, total_pin))
-                          except:
-                            pass
+                            await asyncio.sleep(0.2)
 
+                        except Exception as e:
+                            print(f"[CLONE SEND ERROR] {chat_id} => {e}")
 
-    # ── User broadcast ──────────────────────────────────────────────
-    if "-user" in message.text:
-        susr = 0
-        susers = await get_served_users()
-        for u in susers:
-            try:
-                (
-                    await app.forward_messages(int(u["user_id"]), y, x)
-                    if reply_msg
-                    else await app.send_message(int(u["user_id"]), text=query)
-                )
-                susr += 1
-                await asyncio.sleep(0.2)
-            except FloodWait as fw:
-                flood_time = int(fw.value)
-                if flood_time > 200:
+                except Exception as e:
+                    print(f"[CLONE ERROR] {e}")
                     continue
-                await asyncio.sleep(flood_time)
-            except:
-                pass
+
+        except Exception as e:
+            print(f"[OUTER ERROR] {e}")
+
         try:
-            await message.reply_text(_["broad_4"].format(susr))
+            await status_msg.edit_text(
+                _["broad_3"].format(total_sent, total_pin)
+            )
         except:
             pass
 
+    
 
     # ── Assistant broadcast ─────────────────────────────────────────
     if "-assistant" in message.text:
