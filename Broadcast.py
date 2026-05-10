@@ -96,103 +96,106 @@ async def broadcast_message(client, message, _):
         total_pin += p
 
 # ── Saare clone bots ke groups ──────────────────────────────
-    try:
-        for bot_id, clone_client in clone_bot_clients.items():
+        try:
+            for bot_id, clone_client in clone_bot_clients.items():
 
-            try:
-                clone_chats = await get_clone_served_chats(str(bot_id))
-                clone_chat_ids = [int(c["chat_id"]) for c in clone_chats]
+                try:
+                    clone_chats = await get_clone_served_chats(str(bot_id))
+                    clone_chat_ids = [int(c["chat_id"]) for c in clone_chats]
 
-                print(f"Clone Bot: {bot_id}")
-                print(f"Clone Chats: {clone_chat_ids}")
+                    print(f"Clone Bot: {bot_id}")
+                    print(f"Clone Chats: {clone_chat_ids}")
 
-                if not clone_chat_ids:
-                    continue
+                    if not clone_chat_ids:
+                        continue
 
-                for chat_id in clone_chat_ids:
+                    for chat_id in clone_chat_ids:
 
-                    try:
+                        try:
 
-                        if reply_msg:
+                            if reply_msg:
 
-                            if reply_msg.photo:
-                                await clone_client.send_photo(
-                                    chat_id,
-                                    reply_msg.photo.file_id,
-                                    caption=reply_msg.caption or ""
-                                )
+                                if reply_msg.photo:
+                                    await clone_client.send_photo(
+                                        chat_id,
+                                        reply_msg.photo.file_id,
+                                        caption=reply_msg.caption or ""
+                                    )
 
-                            elif reply_msg.video:
-                                await clone_client.send_video(
-                                    chat_id,
-                                    reply_msg.video.file_id,
-                                    caption=reply_msg.caption or ""
-                                )
+                                elif reply_msg.video:
+                                    await clone_client.send_video(
+                                        chat_id,
+                                        reply_msg.video.file_id,
+                                        caption=reply_msg.caption or ""
+                                    )
 
-                            elif reply_msg.document:
-                                await clone_client.send_document(
-                                    chat_id,
-                                    reply_msg.document.file_id,
-                                    caption=reply_msg.caption or ""
-                                )
+                                elif reply_msg.document:
+                                    await clone_client.send_document(
+                                        chat_id,
+                                        reply_msg.document.file_id,
+                                        caption=reply_msg.caption or ""
+                                    )
 
-                            elif reply_msg.audio:
-                                await clone_client.send_audio(
-                                    chat_id,
-                                    reply_msg.audio.file_id,
-                                    caption=reply_msg.caption or ""
-                                )
+                                elif reply_msg.audio:
+                                    await clone_client.send_audio(
+                                        chat_id,
+                                        reply_msg.audio.file_id,
+                                        caption=reply_msg.caption or ""
+                                    )
 
-                            elif reply_msg.voice:
-                                await clone_client.send_voice(
-                                    chat_id,
-                                    reply_msg.voice.file_id
-                                )
+                                elif reply_msg.voice:
+                                    await clone_client.send_voice(
+                                        chat_id,
+                                        reply_msg.voice.file_id
+                                    )
 
-                            elif reply_msg.animation:
-                                await clone_client.send_animation(
-                                    chat_id,
-                                    reply_msg.animation.file_id,
-                                    caption=reply_msg.caption or ""
-                                )
+                                elif reply_msg.animation:
+                                    await clone_client.send_animation(
+                                        chat_id,
+                                        reply_msg.animation.file_id,
+                                        caption=reply_msg.caption or ""
+                                    )
 
-                            elif reply_msg.sticker:
-                                await clone_client.send_sticker(
-                                    chat_id,
-                                    reply_msg.sticker.file_id
-                                )
+                                elif reply_msg.sticker:
+                                    await clone_client.send_sticker(
+                                        chat_id,
+                                        reply_msg.sticker.file_id
+                                    )
 
-                            elif reply_msg.text:
+                                elif reply_msg.text:
+                                    await clone_client.send_message(
+                                        chat_id,
+                                        reply_msg.text
+                                    )
+
+                            elif query:
                                 await clone_client.send_message(
                                     chat_id,
-                                    reply_msg.text
+                                    query
                                 )
 
-                        elif query:
-                            await clone_client.send_message(
-                                chat_id,
-                                query
-                            )
+                            total_sent += 1
+                            await asyncio.sleep(0.2)
 
-                        total_sent += 1
-                        await asyncio.sleep(0.2)
+                        except Exception as e:
+                            print(f"[CLONE SEND ERROR] {chat_id} => {e}")
 
-                    except Exception as e:
-                        print(f"[CLONE SEND ERROR] {chat_id} => {e}")
+                except Exception as e:
+                    print(f"[CLONE ERROR] {e}")
+                    continue
 
-            except Exception as e:
-                print(f"[CLONE ERROR] {e}")
-                continue
+        except Exception as e:
+            print(f"[OUTER ERROR] {e}")
 
-    except Exception as e:
-        print(f"[OUTER ERROR] {e}")
+        try:
+            await status_msg.edit_text(
+                _["broad_3"].format(total_sent, total_pin)
+            )
+        except:
+            pass
 
-    try:
-        await status_msg.edit_text(
-            _["broad_3"].format(total_sent, total_pin)
-        )
-    except:
-        pass
+
+    
     # ── Assistant broadcast ─────────────────────────────────────────
     if "-assistant" in message.text:
         aw = await message.reply_text(_["broad_5"])
