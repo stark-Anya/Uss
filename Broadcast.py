@@ -1,217 +1,460 @@
 import asyncio
-from pyrogram import filters, enums
-from pyrogram.errors import FloodWait
-from SANYAMUSIC import app, clone_bot_clients
-from SANYAMUSIC.misc import SUDOERS
-from SANYAMUSIC.utils.database import (
-    get_client,
+import time
+import re
+
+from pyrogram import Client, filters
+from pyrogram.types import (
+    InlineKeyboardMarkup,
+    InlineKeyboardButton,
+    CallbackQuery,
+    Message,
+)
+from pyrogram.errors import (
+    FloodWait,
+    UserDeactivated,
+    UserIsBlocked,
+    ChatAdminRequired,
+)
+
+from AniyaMusic import app
+from AniyaMusic.misc import SUDOERS
+from AniyaMusic.utils.database import (
     get_served_chats,
     get_served_users,
+    delete_served_chat,
+    delete_served_user,
 )
-from SANYAMUSIC.utils.clone_db import get_clone_served_chats
-from SANYAMUSIC.utils.decorators.language import language
-from config import OWNER_ID
+from AniyaMusic.utils.theme import UI
 
 IS_BROADCASTING = False
 
-async def _send_to_chats(client, chats: list, y: int, x: int, reply_msg, query: str, message):
-    """Helper — chats ki list mein broadcast karo, count return karo."""
-    sent = 0
-    pin = 0
-    for chat_id in chats:
-        try:
-            if reply_msg:
-                m = await client.copy_message(
-                    chat_id=chat_id,
-                    from_chat_id=reply_msg.chat.id,
-                    message_id=reply_msg.id
+
+def extract_buttons(text):
+    if not text:
+        return "", []
+
+    buttons = []
+
+    matches = re.findall(r"\[(.+?)\s*\|\s*(https?://.+?)\]", text)
+
+    for name, url in matches:
+        buttons.append(
+            [InlineKeyboardButton(name.strip(), url=url.strip())]
+        )
+
+    cleaned_text = re.sub(
+        r"\[(.+?)\s*\|\s*(https?://.+?)\]",
+        "",
+        text,
+    ).strip()
+
+    return cleaned_text, buttons
+
+
+def broadcast_keyboard(pin, preview, forward):
+    return InlineKeyboardMarkup(
+        [
+            [
+                InlineKeyboardButton(
+                    f"📌 PIN {'✅' if pin else '❌'}",
+                    callback_data=f"broadcast_pin_{int(pin)}_{int(preview)}_{int(forward)}",
+                ),
+                InlineKeyboardButton(
+                    f"🌐 PREVIEW {'✅' if preview else '❌'}",
+                    callback_data=f"broadcast_lprev_{int(pin)}_{int(preview)}_{int(forward)}",
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    f"⏩ FORWARD {'✅' if forward else '❌'}",
+                    callback_data=f"broadcast_fwd_{int(pin)}_{int(preview)}_{int(forward)}",
+                ),
+                InlineKeyboardButton(
+                    "👁 PREVIEW",
+                    callback_data=f"broadcast_view_{int(pin)}_{int(preview)}_{int(forward)}",
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    "📢 START ALL",
+                    callback_data=f"broadcast_run_all_{int(pin)}_{int(preview)}_{int(forward)}",
                 )
-            else:
-                m = await client.send_message(chat_id, text=query)
-            if "-pin" in message.text:
-                try:
-                    await m.pin(disable_notification=True)
-                    pin += 1
-                except:
-                    pass
-            elif "-pinloud" in message.text:
-                try:
-                    await m.pin(disable_notification=False)
-                    pin += 1
-                except:
-                    pass
-            sent += 1
-            await asyncio.sleep(0.2)
-        except FloodWait as fw:
-            flood_time = int(fw.value)
-            if flood_time > 200:
-                continue
-            await asyncio.sleep(flood_time)
-        except Exception as e:
-            print(f"[SEND ERROR] {chat_id} => {e}")
-            continue
-    return sent, pin
+            ],
+            [
+                InlineKeyboardButton(
+                    "👤 USERS",
+                    callback_data=f"broadcast_run_users_{int(pin)}_{int(preview)}_{int(forward)}",
+                ),
+                InlineKeyboardButton(
+                    "👥 GROUPS",
+                    callback_data=f"broadcast_run_groups_{int(pin)}_{int(preview)}_{int(forward)}",
+                ),
+            ],
+            [
+                InlineKeyboardButton(
+                    "⛔ STOP",
+                    callback_data="broadcast_stop",
+                )
+            ],
+        ]
+    )
+
 
 @app.on_message(filters.command("broadcast") & SUDOERS)
-@language
-async def broadcast_message(client, message, _):
+async def broadcast_command(client: Client, message: Message):
     global IS_BROADCASTING
-    # Clone bot me broadcast allowed nahi
-    is_clone = getattr(client, "is_clone", False)
-    if is_clone:
+
+    if not message.reply_to_message and len(message.command) < 2:
         return await message.reply_text(
-            "❌ Broadcast is not available in clone bots.\n"
-            "Use the <b>main bot</b> to broadcast to all groups.",
-            parse_mode=enums.ParseMode.HTML,
+            UI.panel(
+                "📡 BROADCAST TOOL",
+                (
+                    "<b>Reply to a message or type text.</b>\n\n"
+                    "<b>Buttons:</b>\n"
+                    "<code>[Button | https://example.com]</code>\n\n"
+                    "<b>Example:</b>\n"
+                    "<code>/broadcast Hello [Support | https://t.me/yourchannel]</code>"
+                ),
+            )
         )
-    # Sirf main owner
-    if message.from_user.id != OWNER_ID:
+
+    if IS_BROADCASTING:
         return await message.reply_text(
-            "❌ Only the <b>main owner</b> can use broadcast.",
-            parse_mode=enums.ParseMode.HTML,
+            UI.panel(
+                "⚠️ BUSY",
+                "<b>Broadcast already running.</b>",
+            )
         )
-    reply_msg = message.reply_to_message
-    if reply_msg:
-        x = reply_msg.id
-        y = message.chat.id
-        query = ""
-    else:
-        if len(message.command) < 2:
-            return await message.reply_text(_["broad_2"])
-        query = message.text.split(None, 1)[1]
-        for flag in ["-pin", "-nobot", "-pinloud", "-assistant", "-user"]:
-            query = query.replace(flag, "")
-        query = query.strip()
-        if not query:
-            return await message.reply_text(_["broad_8"])
-        x = y = 0
-    IS_BROADCASTING = True
-    status_msg = await message.reply_text(_["broad_1"])
-    total_sent = 0
-    total_pin = 0
-    
-    if "-nobot" not in message.text:
-        # ── Main bot ke groups ──────────────────────────────────────
-        schats = await get_served_chats()
-        main_chats = [int(c["chat_id"]) for c in schats]
-        s, p = await _send_to_chats(app, main_chats, y, x, reply_msg, query, message)
-        total_sent += s
-        total_pin += p
 
-        # ── Saare clone bots ke groups ──────────────────────────────
-        try:
-            for bot_id, clone_client in clone_bot_clients.items():
-                try:
-                    clone_chats = await get_clone_served_chats(str(bot_id))
-                    clone_chat_ids = [int(c["chat_id"]) for c in clone_chats]
+    await message.reply_text(
+        text=UI.panel(
+            "📡 BROADCAST DASHBOARD",
+            "<b>Configure your broadcast settings.</b>",
+        ),
+        reply_markup=broadcast_keyboard(
+            pin=False,
+            preview=True,
+            forward=False,
+        ),
+        reply_to_message_id=message.id,
+    )
 
-                    print(f"Clone Bot: {bot_id}")
-                    print(f"Clone Chats: {clone_chat_ids}")
 
-                    if not clone_chat_ids:
-                        continue
+@app.on_callback_query(filters.regex(r"^broadcast_"))
+async def broadcast_callback(client: Client, query: CallbackQuery):
+    global IS_BROADCASTING
 
-                    for chat_id in clone_chat_ids:
-                        try:
-                            if reply_msg:
-                                if reply_msg.photo:
-                                    await clone_client.send_photo(
-                                        chat_id,
-                                        reply_msg.photo.file_id,
-                                        caption=reply_msg.caption or ""
-                                    )
-                                elif reply_msg.video:
-                                    await clone_client.send_video(
-                                        chat_id,
-                                        reply_msg.video.file_id,
-                                        caption=reply_msg.caption or ""
-                                    )
-                                elif reply_msg.document:
-                                    await clone_client.send_document(
-                                        chat_id,
-                                        reply_msg.document.file_id,
-                                        caption=reply_msg.caption or ""
-                                    )
-                                elif reply_msg.audio:
-                                    await clone_client.send_audio(
-                                        chat_id,
-                                        reply_msg.audio.file_id,
-                                        caption=reply_msg.caption or ""
-                                    )
-                                elif reply_msg.voice:
-                                    await clone_client.send_voice(
-                                        chat_id,
-                                        reply_msg.voice.file_id
-                                    )
-                                elif reply_msg.animation:
-                                    await clone_client.send_animation(
-                                        chat_id,
-                                        reply_msg.animation.file_id,
-                                        caption=reply_msg.caption or ""
-                                    )
-                                elif reply_msg.sticker:
-                                    await clone_client.send_sticker(
-                                        chat_id,
-                                        reply_msg.sticker.file_id
-                                    )
-                                elif reply_msg.text:
-                                    await clone_client.send_message(
-                                        chat_id,
-                                        reply_msg.text
-                                    )
-                            elif query:
-                                await clone_client.send_message(
-                                    chat_id,
-                                    query
-                                )
+    data = query.data.split("_")
 
-                            total_sent += 1
-                            await asyncio.sleep(0.2)
+    if len(data) < 2:
+        return
 
-                        except Exception as e:
-                            print(f"[CLONE SEND ERROR] {chat_id} => {e}")
+    action = data[1]
 
-                except Exception as e:
-                    print(f"[CLONE ERROR] {e}")
-                    continue
-
-        except Exception as e:
-            print(f"[OUTER ERROR] {e}")
+    if action == "stop":
+        IS_BROADCASTING = False
+        return await query.message.delete()
 
     try:
-        await status_msg.edit_text(
-            _["broad_3"].format(total_sent, total_pin)
+        if action == "run":
+            mode = data[2]
+            pin_enabled = bool(int(data[3]))
+            preview_enabled = bool(int(data[4]))
+            forward_enabled = bool(int(data[5]))
+        else:
+            pin_enabled = bool(int(data[2]))
+            preview_enabled = bool(int(data[3]))
+            forward_enabled = bool(int(data[4]))
+
+    except Exception:
+        return await query.answer(
+            "Invalid callback data.",
+            show_alert=True,
         )
-    except:
-        pass
-    
-    # ── Assistant broadcast ─────────────────────────────────────────
-    if "-assistant" in message.text:
-        aw = await message.reply_text(_["broad_5"])
-        text = _["broad_6"]
-        from SANYAMUSIC.core.userbot import assistants
-        for num in assistants:
-            sent = 0
-            assist_client = await get_client(num)
-            async for dialog in assist_client.get_dialogs():
-                try:
-                    (
-                        await assist_client.forward_messages(dialog.chat.id, y, x)
-                        if reply_msg
-                        else await assist_client.send_message(dialog.chat.id, text=query)
-                    )
-                    sent += 1
-                    await asyncio.sleep(3)
-                except FloodWait as fw:
-                    flood_time = int(fw.value)
-                    if flood_time > 200:
-                        continue
-                    await asyncio.sleep(flood_time)
-                except:
-                    continue
-            text += _["broad_7"].format(num, sent)
+
+    if action in ["pin", "lprev", "fwd"]:
+
+        if action == "pin":
+            pin_enabled = not pin_enabled
+
+        elif action == "lprev":
+            preview_enabled = not preview_enabled
+
+        elif action == "fwd":
+            forward_enabled = not forward_enabled
+
+        return await query.message.edit_reply_markup(
+            broadcast_keyboard(
+                pin_enabled,
+                preview_enabled,
+                forward_enabled,
+            )
+        )
+
+    cmd_msg = query.message.reply_to_message
+
+    if not cmd_msg:
+        return await query.answer(
+            "Broadcast source lost.",
+            show_alert=True,
+        )
+
+    content_chat_id = cmd_msg.chat.id
+    content_msg_id = None
+    raw_text = ""
+
+    msg_text = cmd_msg.text or cmd_msg.caption or ""
+
+    if cmd_msg.reply_to_message:
+        content_msg_id = cmd_msg.reply_to_message.id
+
+        parts = msg_text.split(None, 1)
+
+        if len(parts) > 1:
+            raw_text = parts[1]
+
+    else:
+        parts = msg_text.split(None, 1)
+
+        if len(parts) > 1:
+            raw_text = parts[1]
+
+    if not content_msg_id and not raw_text:
+        return await query.answer(
+            "No content found.",
+            show_alert=True,
+        )
+
+    cleaned_text, buttons = extract_buttons(raw_text)
+
+    reply_markup = (
+        InlineKeyboardMarkup(buttons)
+        if buttons
+        else None
+    )
+
+    # ================= PREVIEW =================
+
+    if action == "view":
+
         try:
-            await aw.edit_text(text)
+            if forward_enabled and content_msg_id:
+
+                await client.forward_messages(
+                    chat_id=query.from_user.id,
+                    from_chat_id=content_chat_id,
+                    message_ids=content_msg_id,
+                )
+
+            elif content_msg_id:
+
+                await client.copy_message(
+                    chat_id=query.from_user.id,
+                    from_chat_id=content_chat_id,
+                    message_id=content_msg_id,
+                    caption=cleaned_text or None,
+                    reply_markup=reply_markup,
+                )
+
+            else:
+
+                await client.send_message(
+                    chat_id=query.from_user.id,
+                    text=cleaned_text,
+                    reply_markup=reply_markup,
+                    disable_web_page_preview=not preview_enabled,
+                )
+
+            return await query.answer(
+                "Preview sent.",
+                show_alert=True,
+            )
+
+        except Exception as e:
+            return await query.answer(
+                str(e),
+                show_alert=True,
+            )
+
+    # ================= RUN =================
+
+    if action == "run":
+
+        if IS_BROADCASTING:
+            return await query.answer(
+                "Broadcast already running.",
+                show_alert=True,
+            )
+
+        targets = []
+
+        if mode in ["users", "all"]:
+            users = await get_served_users()
+            targets.extend(
+                [int(x["user_id"]) for x in users]
+            )
+
+        if mode in ["groups", "all"]:
+            groups = await get_served_chats()
+            targets.extend(
+                [int(x["chat_id"]) for x in groups]
+            )
+
+        if not targets:
+            return await query.answer(
+                "No targets found.",
+                show_alert=True,
+            )
+
+        IS_BROADCASTING = True
+
+        sent = 0
+        failed = 0
+        cleaned = 0
+
+        total = len(targets)
+
+        start_time = time.time()
+
+        await query.message.edit_text(
+            UI.panel(
+                "🚀 BROADCAST STARTED",
+                (
+                    f"<b>Total:</b> {total}\n"
+                    f"<b>Mode:</b> {mode.upper()}\n"
+                    f"<b>Forward:</b> {'Enabled' if forward_enabled else 'Disabled'}"
+                ),
+            )
+        )
+
+        for i, chat_id in enumerate(targets):
+
+            if not IS_BROADCASTING:
+                break
+
+            try:
+
+                sent_msg = None
+
+                # FORWARD MODE
+                if forward_enabled and content_msg_id:
+
+                    sent_msg = await client.forward_messages(
+                        chat_id=chat_id,
+                        from_chat_id=content_chat_id,
+                        message_ids=content_msg_id,
+                    )
+
+                # COPY MODE
+                elif content_msg_id:
+
+                    sent_msg = await client.copy_message(
+                        chat_id=chat_id,
+                        from_chat_id=content_chat_id,
+                        message_id=content_msg_id,
+                        caption=cleaned_text or None,
+                        reply_markup=reply_markup,
+                    )
+
+                # TEXT MODE
+                else:
+
+                    sent_msg = await client.send_message(
+                        chat_id=chat_id,
+                        text=cleaned_text,
+                        reply_markup=reply_markup,
+                        disable_web_page_preview=not preview_enabled,
+                    )
+
+                if pin_enabled and sent_msg:
+                    try:
+                        await sent_msg.pin(
+                            disable_notification=True
+                        )
+                    except:
+                        pass
+
+                sent += 1
+
+            except FloodWait as e:
+
+                await asyncio.sleep(e.value)
+
+            except (UserDeactivated, UserIsBlocked):
+
+                cleaned += 1
+
+                try:
+                    await delete_served_user(chat_id)
+                except:
+                    pass
+
+            except ChatAdminRequired:
+
+                cleaned += 1
+
+                try:
+                    await delete_served_chat(chat_id)
+                except:
+                    pass
+
+            except Exception:
+                failed += 1
+
+            # Progress
+            if i % 15 == 0 or i == total - 1:
+
+                percent = int((i + 1) / total * 100)
+
+                prog = int(percent / 10)
+
+                bar = (
+                    "■" * prog
+                    + "□" * (10 - prog)
+                )
+
+                try:
+                    await query.message.edit_text(
+                        UI.panel(
+                            "📡 BROADCASTING",
+                            (
+                                f"<code>{bar}</code> {percent}%\n\n"
+                                f"✅ <b>Sent:</b> {sent}\n"
+                                f"❌ <b>Failed:</b> {failed}\n"
+                                f"🧹 <b>Cleaned:</b> {cleaned}"
+                            ),
+                        )
+                    )
+                except:
+                    pass
+
+            await asyncio.sleep(0.05)
+
+        IS_BROADCASTING = False
+
+        total_time = int(time.time() - start_time)
+
+        report = (
+            f"⏱ <b>Time:</b> {total_time}s\n"
+            f"✅ <b>Sent:</b> {sent}\n"
+            f"❌ <b>Failed:</b> {failed}\n"
+            f"🧹 <b>Cleaned:</b> {cleaned}"
+        )
+
+        try:
+            await query.message.edit_text(
+                UI.panel(
+                    "🏁 FINAL REPORT",
+                    report,
+                )
+            )
+
         except:
-            pass
-    IS_BROADCASTING = False
+
+            await client.send_message(
+                query.from_user.id,
+                UI.panel(
+                    "🏁 FINAL REPORT",
+                    report,
+                ),
+        )
